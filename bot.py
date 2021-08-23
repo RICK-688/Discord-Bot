@@ -1,24 +1,24 @@
 """
 
 这是一个作于办公的discord小机器人，需要用到以下的库:
-discord.py
+discord.py prettytable (用于后续详细timetable)
 安装后根据我的注释修改你需要的功能即可啦~
 Author: Rick
 
 """
 
 import asyncio
-import discord
-import discord.utils
-import itchat
-import requests
-import re
 import json
 
+import discord
+import discord.utils
+import requests
+from prettytable import PrettyTable
+from prettytable import MSWORD_FRIENDLY
 
 intents = discord.Intents.default()
 intents.members = True
-client = discord.Client(intents=intents, command_prefix='$')
+client = discord.Client(intents=intents, command_prefix='$') #command key with "$",$进行command
 
 
 # 登陆机器人成功所显示内容
@@ -66,16 +66,21 @@ async def status_task():
 # 发送DM的API
 async def send_dm(context, user: discord.User, message):
     await user.send(message)
+    #后端显示DM发送
+    print ("The DM been send to: " + user + "Context: " + message)
 
 
 # TODO 移动成员API
-# async def move_member():
+def move_member(user_id,channel_id):
+    await client.move_member(user_id, channel_id)
 
 # TODO 创建私人频道API
 #async def create_pra_chan(name,category):
 #    name = ctx.message.author
 #    category = discord.CategoryChannel.id =
 #   await guild.create_text_channel(str(name), overwrites=overwrites, category=category)
+#TODO 创建并随机分配房间ID
+
 
 
 # https://api.qingyunke.com/ 提供API支持
@@ -84,14 +89,51 @@ async def send_dm(context, user: discord.User, message):
 async def on_message(message):
     if client.user.mentioned_in(message):
         context = message.content
-        context.replace("<@!876864972926378005> ","") #需要把之前@机器人的内容去除,此地方为机器人的ID
+        context.replace("<> ","") #需要把之前@机器人的内容去除,此地方为机器人的ID
         response = json.loads(requests.get("https://api.qingyunke.com/api.php?key=free&appid=0&msg="+context).text)
         text = response["content"] + ",汪~"
         #替换API机器人原始的名字至您要的名字
         new_text = text.replace("菲菲","西八")
         #后端回复记录
-        print("The Bot been mention, will do auto response:")
+        print("The Bot been mention, will do auto response: ")
         print("context: " + new_text)
         await message.channel.send(new_text)
 
-client.run('')#放你的机器人token
+#TODO 已完成表格设计，需要通过输出csv或者mysql来进行记录
+#TIMA-TABLE FORMAT：
+#[预约时间] [预约人] [预约会议室ID] [会议成员] [结束时间] (IN LIST)
+DATASET = []
+s = ['房间ID  开始时间  主持人   人数   结束时间']
+final_table = ""
+def add_table(time, holder, mtID, members, end):
+    DATASET.append((time, holder, mtID, members, end))
+    for data in DATASET:
+        s.append('   '.join([str(item).center(5, ' ') for item in data]))
+    global final_table
+    DATASET.pop(0)
+    final_table = '```' + '\n'.join(s) + '```'
+
+#预约meeting room:
+@client.event
+async def on_message(message):
+    if message.content.startswith('$test'):
+        context = message.content
+        non_cmd = context.replace("$test","")
+        if "," not in non_cmd:
+            await message.channel.send('您输入的指令格式不正确,请重新输入')
+            print("User has use command '$test', But format incorrect")
+        else:
+            args = non_cmd.split(',')  # 检测输入的arguments
+            print("User has use command '$test', With arguments: " + str(args))
+            if len(args)>=5:
+                add_table(time=args[0],holder=args[1],mtID=args[2],members=args[3],end=args[4])
+                embed = discord.Embed(title='Meeting-Timetable 会议时刻表', description=str(final_table))
+                await message.channel.send(embed=embed)
+                print("add table successful,Current Table: \n")
+                print(final_table)
+            else:
+                await message.channel.send("指令缺少所需信息，请检查后重新输入")
+                print("errors in arguements, please retype")
+
+
+client.run('')#这里输入您的机器人ID
